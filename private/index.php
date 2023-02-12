@@ -1,7 +1,7 @@
 
 <?php
 
-require_once 'private/shared.php';
+require_once 'shared.php';
 
 $config = getConfig();
 
