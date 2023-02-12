@@ -1,6 +1,7 @@
 <?php
 
 require_once 'shared/http_clients.php';
+require_once 'shared/db.php';
 
 class Config {
 	# Despite the name this isn't the official one, it's just a very similar sounding scammy looking site
@@ -10,7 +11,7 @@ class Config {
 	private string $dbLocation;
 	private ImdbApiClient $imdbApiClient;
 	private OmdbApiClient $omdbApiClient;
-	private SQLite3 $db;
+	private Database $db;
 
 	public function __construct($rawConfig) {
 		$this->imdbApiKey = $rawConfig['imdb_api_key'];
@@ -30,7 +31,7 @@ class Config {
 
 	public function getDb() {
 		if (!isset($this->db)) {
-			$this->db = new SQLite3($this->dbLocation);
+			$this->db = new Database($this->dbLocation);
 		}
 
 		return $this->db;
@@ -56,39 +57,6 @@ function getConfig() {
 	return new Config($rawConfig);
 }
 
-function ensureDb($db) {
-	$success = $db->exec(<<<SQL
-CREATE TABLE IF NOT EXISTS shows (
-	imdb_id TEXT PRIMARY KEY,
-	name TEXT NOT NULL,
-	last_checked INTEGER NOT NULL DEFAULT 0
-)
-SQL
-	);
-	$success &= $db->exec(<<<SQL
-CREATE UNIQUE INDEX IF NOT EXISTS show_ids
-	ON shows (imdb_id)
-SQL
-	);
-
-	$success &= $db->exec(<<<SQL
-CREATE TABLE IF NOT EXISTS seasons (
-	imdb_id TEXT NOT NULL,
-	number INTEGER NOT NULL,
-	released INTEGER NOT NULL,
-	FOREIGN KEY(imdb_id) REFERENCES shows(imdb_id)
-)
-SQL
-	);
-	$success &= $db->exec(<<<SQL
-CREATE UNIQUE INDEX IF NOT EXISTS season_numbers
-	ON seasons (imdb_id, number)
-SQL
-	);
-
-	return $success;
-}
-
 function updateSingleShow($config, $imdbId, $maxSeason) {
 	$seasons = [];
 	$seasonNumber = $maxSeason + 1;
@@ -103,74 +71,19 @@ function updateSingleShow($config, $imdbId, $maxSeason) {
 		$seasonNumber += 1;
 	}
 
-	$db = $config->getDb();
-	if (sizeof($seasons) > 0) {
-		$db->exec('BEGIN TRANSACTION');
-
-		$stmt = $db->prepare('INSERT INTO seasons (imdb_id, number, released) VALUES (:imdb_id, :number, :release)');
-		foreach ($seasons as $season) {
-			$stmt->reset();
-
-			$stmt->bindValue(':imdb_id', $imdbId);
-			$stmt->bindValue(':number', $season['number']);
-			$stmt->bindValue(':release', $season['release']);
-			$stmt->execute();
-		}
-		$stmt->close();
-
-		$showStmt = $db->prepare('UPDATE shows SET last_checked = strftime(\'%s\', datetime(\'now\')) WHERE imdb_id = :imdb_id');
-		$showStmt->bindValue(':imdb_id', $imdbId);
-		$showStmt->execute();
-		$showStmt->close();
-
-		$db->exec('COMMIT');
-	}
+	$config->getDb()->updateShow($imdbId, $seasons);
 }
 
 function updateLeastRecentShow($config) {
-	# Pick out the show that's been checked least recently, unless they've all been checked in the past day, in which
-	# case we don't need to update them unnecessarily.
-	$query = $config->getDb()->query(<<<SQL
-WITH season_numbers AS (
-	SELECT
-			imdb_id,
-			MAX(number) AS number
-		FROM seasons 
-		GROUP BY imdb_id
-)
-SELECT
-	shows.imdb_id,
-	shows.name,
-	shows.last_checked,
-	season_numbers.number
-	FROM shows
-		LEFT JOIN season_numbers USING(imdb_id)
-	WHERE
-		shows.last_checked < strftime('%s', 'now', '-1 day')
-	ORDER BY shows.last_checked ASC
-	LIMIT 1
-SQL
-	);
-
-	$toUpdate = $query->fetchArray(SQLITE3_ASSOC);
+	$toUpdate = $config->getDb()->findLeastRecentStaleShow();
 	if (!$toUpdate) return;
 
-	updateSingleShow($config, $toUpdate['imdb_id'], $toUpdate['number']);
-
-	$query->finalize();
+	updateSingleShow($config, $toUpdate['imdb_id'], $toUpdate['max_season']);
 }
 
 function updateAllShows($config) {
 	# Find all shows that haven't been checked in the last day
-	$toUpdate = $config->getDb()->query(<<<SQL
-SELECT shows.imdb_id AS imdb_id, IFNULL(MAX(seasons.number), 0) AS max_season
-	FROM shows
-		LEFT JOIN seasons USING(imdb_id)
-	WHERE
-		shows.last_checked < strftime('%s', 'now', '-1 day')
-	GROUP BY shows.imdb_id
-SQL
-	);
+	$toUpdate = $config->getDb()->findAllStaleShows();
 
 	while ($row = $toUpdate->fetchArray(SQLITE3_ASSOC)) {
 		updateSingleShow($config, $row['imdb_id'], $row['max_season']);

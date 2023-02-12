@@ -12,17 +12,7 @@ require_once 'private/shared.php';
 $config = getConfig();
 updateLeastRecentShow($config);
 
-$results = $config->getDb()->query(<<<SQL
-SELECT
-		shows.name AS name,
-		shows.imdb_id AS imdb_id,
-		seasons.number AS season_number,
-		seasons.released AS released
-	FROM shows
-		JOIN seasons USING(imdb_id)
-	ORDER BY seasons.released DESC
-SQL
-);
+$results = $config->getDb()->getSeasonsByLastReleased();
 
 header('Content-Type: application/xml');
 

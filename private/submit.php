@@ -7,39 +7,19 @@ require_once 'shared.php';
 require_once 'shared/utils.php';
 
 $config = getConfig();
-ensureDb($config->getDb());
-
-function trackedName($db, $imdbId) {
-	$stmt = $db->prepare('SELECT name FROM shows WHERE imdb_id=:imdb_id');
-	$stmt->bindValue(':imdb_id', $imdbId, SQLITE3_TEXT);
-	$result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-
-	if ($result) {
-		return $result['name'];
-	} else {
-		return false;
-	}
-}
-
-function trackShow($db, $imdbId, $name) {
-	$stmt = $db->prepare('INSERT INTO shows (imdb_id, name) VALUES (:imdb_id, :name)');
-	$stmt->bindValue(':imdb_id', $imdbId);
-	$stmt->bindValue(':name', $name);
-
-	return $stmt->execute();
-}
+$config->getDb()->ensure();
 
 if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 	$imdbId = $_POST['imdb_id'];
 
-	$trackedName = trackedName($config->getDb(), $imdbId);
+	$trackedName = $config->getDb()->getTrackedName($imdbId);
 	if ($trackedName) {
 		echo '<p>Already tracking ' . $trackedName . '.</p>';
 	} else {
 		$config = getConfig();
 		$name = $config->getImdbApiClient()->fetchShowName($imdbId);
 
-		if ($name && trackShow($config->getDb(), $imdbId, $name)) {
+		if ($name && $config->getDb()->trackShow($imdbId, $name)) {
 			echo '<p>Now tracking ' . $name . '.</p>';
 			updateAllShows($config);
 		} else {

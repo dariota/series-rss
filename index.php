@@ -5,24 +5,7 @@ require_once 'private/shared.php';
 
 $config = getConfig();
 
-$query = $config->getDb()->query(<<<SQL
-WITH season_releases AS (
-	SELECT
-			imdb_id,
-			MAX(released) AS released
-		FROM seasons
-		GROUP BY imdb_id
-)
-SELECT
-	shows.imdb_id,
-	shows.name,
-	shows.last_checked,
-	season_releases.released
-	FROM shows
-		LEFT JOIN season_releases USING(imdb_id)
-	ORDER BY season_releases.released DESC
-SQL
-);
+$query = $config->getDb()->getShowsByLastReleased();
 
 ?>
 <html>
