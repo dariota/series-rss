@@ -28,7 +28,6 @@ SQL
 header('Content-Type: application/xml');
 
 ?>
-
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 	<channel>
 		<title>Series Tracker</title>
@@ -43,21 +42,29 @@ while ($row = $results->fetchArray(SQLITE3_ASSOC)) {
 	$pubDate = strftime("%a, %d %b %Y %T GMT", $row['released']);
 
 	if (!$lastBuild) {
-		echo "\t\t<lastBuildDate>" . $pubDate . "</lastBuildDate>";
+		echo <<<BUILD
+		<lastBuildDate>$pubDate</lastBuildDate>
+
+BUILD;
 		$lastBuild = true;
 	}
 
-	$guid = $row['imdb_id'] . '-S' . $row['season_number'];
-
-	echo "\t\t<item>\n";
-	echo "\t\t\t<title>" . $row['name'] . ", Season " . $row['season_number'] . "</title>\n";
-	echo "\t\t\t<pubDate>" . $pubDate . "</pubDate>\n";
+	$name = $row['name'];
+	$seasonNumber = $row['season_number'];
+	$guid = $row['imdb_id'] . '-S' . $seasonNumber;
 	# See above - without this phony link some readers break.
-	echo "\t\t\t<link>" . $_SERVER['REQUEST_URI'] . "?id=" . $guid . "</link>\n";
-	echo "\t\t\t<guid isPermaLink=\"false\">" . $guid . "</guid>\n";
-	# NB will break if tracking multiple series with the same name
-	echo "\t\t\t<category>" . $row['name'] . "</category>\n";
-	echo "\t\t</item>\n";
+	$link = $_SERVER['REQUEST_URI'] . "?id=$guid";
+
+	echo <<<ITEM
+		<item>
+			<title>$name, Season $seasonNumber</title>
+			<pubDate>$pubDate</pubDate>
+			<guid isPermalink="false">$guid</guid>
+			<link>$link</link>
+			<category>$name</category>
+		</item>
+
+ITEM;
 }
 ?>
 	</channel>
