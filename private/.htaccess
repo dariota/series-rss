@@ -1,0 +1,5 @@
+AuthType Basic
+AuthName "Series Tracker"
+AuthUserFile "/usr/local/apache/passwd/passwords"
+AuthGroupFile "/usr/local/apache/passwd/groups"
+Require group SeriesSubmission
