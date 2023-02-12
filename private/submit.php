@@ -3,7 +3,8 @@
 
 <?php
 
-require 'shared.php';
+require_once 'shared.php';
+require_once 'shared/utils.php';
 
 $config = getConfig();
 ensureDb($config->getDb());

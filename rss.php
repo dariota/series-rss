@@ -7,7 +7,7 @@ if (isset($_GET['id'])) {
 	return 0;
 }
 
-require 'private/shared.php';
+require_once 'private/shared.php';
 
 $config = getConfig();
 updateLeastRecentShow($config);
