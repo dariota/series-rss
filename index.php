@@ -3,10 +3,9 @@
 
 require 'private/shared.php';
 
-$db = getDb();
 $config = getConfig();
 
-$query = $db->query(<<<SQL
+$query = $config->getDb()->query(<<<SQL
 WITH season_releases AS (
 	SELECT
 			imdb_id,

@@ -5,8 +5,8 @@
 
 require 'shared.php';
 
-$db = getDb();
-ensureDb($db);
+$config = getConfig();
+ensureDb($config->getDb());
 
 function isValidImdbId($imdbId) {
 	return preg_match('/^tt\d+$/', $imdbId) == 1;
@@ -61,16 +61,16 @@ function fetchShowName($config, $imdbId) {
 if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 	$imdbId = $_POST['imdb_id'];
 
-	$trackedName = trackedName($db, $imdbId);
+	$trackedName = trackedName($config->getDb(), $imdbId);
 	if ($trackedName) {
 		echo '<p>Already tracking ' . $trackedName . '.</p>';
 	} else {
 		$config = getConfig();
 		$name = fetchShowName($config, $imdbId);
 
-		if ($name && trackShow($db, $imdbId, $name)) {
+		if ($name && trackShow($config->getDb(), $imdbId, $name)) {
 			echo '<p>Now tracking ' . $name . '.</p>';
-			updateAllShows($db, $config);
+			updateAllShows($config);
 		} else {
 			echo '<p>Failed to track show.</p>';
 		}

@@ -9,11 +9,10 @@ if (isset($_GET['id'])) {
 
 require 'private/shared.php';
 
-$db = getDb();
 $config = getConfig();
-updateLeastRecentShow($db, $config);
+updateLeastRecentShow($config);
 
-$results = $db->query(<<<SQL
+$results = $config->getDb()->query(<<<SQL
 SELECT
 		shows.name AS name,
 		shows.imdb_id AS imdb_id,

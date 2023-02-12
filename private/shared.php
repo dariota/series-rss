@@ -3,23 +3,30 @@
 class Config {
 	# Despite the name this isn't the official one, it's just a very similar sounding scammy looking site
 	private string $imdbApiKey;
+	private string $dbLocation;
+	private SQLite3 $db;
 
-	public function __construct($imdbApiKey) {
-		$this->imdbApiKey = $imdbApiKey;
+	public function __construct($rawConfig) {
+		$this->imdbApiKey = $rawConfig['imdb_api_key'];
+		$this->dbLocation = $rawConfig['db_location'];
 	}
 
 	public function getImdbApiKey() {
 		return $this->imdbApiKey;
 	}
-}
 
-function getDb() {
-	return new SQLite3(__DIR__ . '/shows.db');
+	public function getDb() {
+		if (!isset($this->db)) {
+			$this->db = new SQLite3($this->dbLocation);
+		}
+
+		return $this->db;
+	}
 }
 
 function getConfig() {
 	$rawConfig = json_decode(file_get_contents("/usr/local/apache/seriesRssSecrets.json"), true);
-	return new Config($rawConfig['imdb_api_key']);
+	return new Config($rawConfig);
 }
 
 function ensureDb($db) {
@@ -94,7 +101,7 @@ function fetchSeasonRelease($config, $imdbId, $seasonNumber) {
 	}
 }
 
-function updateSingleShow($db, $config, $imdbId, $maxSeason) {
+function updateSingleShow($config, $imdbId, $maxSeason) {
 	$seasons = [];
 	$seasonNumber = $maxSeason + 1;
 
@@ -108,6 +115,7 @@ function updateSingleShow($db, $config, $imdbId, $maxSeason) {
 		$seasonNumber += 1;
 	}
 
+	$db = $config->getDb();
 	if (sizeof($seasons) > 0) {
 		$db->exec('BEGIN TRANSACTION');
 
@@ -131,10 +139,10 @@ function updateSingleShow($db, $config, $imdbId, $maxSeason) {
 	}
 }
 
-function updateLeastRecentShow($db, $config) {
+function updateLeastRecentShow($config) {
 	# Pick out the show that's been checked least recently, unless they've all been checked in the past day, in which
 	# case we don't need to update them unnecessarily.
-	$query = $db->query(<<<SQL
+	$query = $config->getDb()->query(<<<SQL
 WITH season_numbers AS (
 	SELECT
 			imdb_id,
@@ -159,14 +167,14 @@ SQL
 	$toUpdate = $query->fetchArray(SQLITE3_ASSOC);
 	if (!$toUpdate) return;
 
-	updateSingleShow($db, $config, $toUpdate['imdb_id'], $toUpdate['number']);
+	updateSingleShow($config, $toUpdate['imdb_id'], $toUpdate['number']);
 
 	$query->finalize();
 }
 
-function updateAllShows($db, $config) {
+function updateAllShows($config) {
 	# Find all shows that haven't been checked in the last day
-	$toUpdate = $db->query(<<<SQL
+	$toUpdate = $config->getDb()->query(<<<SQL
 SELECT shows.imdb_id AS imdb_id, IFNULL(MAX(seasons.number), 0) AS max_season
 	FROM shows
 		LEFT JOIN seasons USING(imdb_id)
@@ -177,7 +185,7 @@ SQL
 	);
 
 	while ($row = $toUpdate->fetchArray(SQLITE3_ASSOC)) {
-		updateSingleShow($db, $config, $row['imdb_id'], $row['max_season']);
+		updateSingleShow($config, $row['imdb_id'], $row['max_season']);
 	}
 
 	$toUpdate->finalize();
