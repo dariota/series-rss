@@ -8,10 +8,6 @@ require 'shared.php';
 $config = getConfig();
 ensureDb($config->getDb());
 
-function isValidImdbId($imdbId) {
-	return preg_match('/^tt\d+$/', $imdbId) == 1;
-}
-
 function trackedName($db, $imdbId) {
 	$stmt = $db->prepare('SELECT name FROM shows WHERE imdb_id=:imdb_id');
 	$stmt->bindValue(':imdb_id', $imdbId, SQLITE3_TEXT);
@@ -32,78 +28,6 @@ function trackShow($db, $imdbId, $name) {
 	return $stmt->execute();
 }
 
-function fetchShowName($config, $imdbId) {
-	$curl = curl_init();
-
-	try {
-		curl_setopt($curl, CURLOPT_URL, 'https://imdb-api.com/en/API/Title/' . $config->getImdbApiKey() . '/' . $imdbId);
-		curl_setopt($curl, CURLOPT_HEADER, 0);
-		curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-		$result = curl_exec($curl);
-		if (!$result) {
-			$info = curl_getinfo($curl);
-			error_log('Failed to retrieve ' . $imdbId . ', code: ' . $info['http_code'] . ', in: ' . $info['total_time']);
-			return false;
-		}
-
-		$result = json_decode($result, true);
-		if (is_null($result['title'])) {
-			error_log('Error while retrieving ' . $imdbId . ', ' . $result['errorMessage']);
-			return false;
-		}
-
-		return $result['title'];
-	} finally {
-		curl_close($curl);
-	}
-}
-
-function fetchSearchResults($config, $query, $page) {
-	if (!$config->supportsSearch()) throw new Exception('Search requires an OMDB api key in config');
-
-	$outcome = new \stdClass();
-	$outcome->results = [];
-	$outcome->more = true;
-
-	# Each page from OMDB is 10 results, which is rather small, so let's get two pages at a time and paginate internally
-	$effectivePage = ($page - 1) * 2;
-	for ($i = 1; $i < 3 && $outcome->more; $i++) {
-		try {
-			$curl = curl_init();
-
-			$queryPage = $effectivePage + $i;
-			curl_setopt($curl, CURLOPT_URL, 'https://www.omdbapi.com/?apikey=' . $config->getOmdbApiKey() . '&type=series&s=' . $query . '&page=' . $queryPage);
-			curl_setopt($curl, CURLOPT_HEADER, 0);
-			curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-			$result = curl_exec($curl);
-			if (!$result) {
-				$info = curl_getinfo($curl);
-				error_log('Failed to search ' . $query . ' on page ' . $effectivePage . ', code: ' . $info['http_code'] . ', in: ' . $info['total_time']);
-				return false;
-			}
-		} finally {
-			curl_close($curl);
-		}
-
-		$result = json_decode($result, true);
-		if ($result['Response'] == 'False') {
-			# There are no more results, and possibly there are none at all
-			$outcome->more = false;
-			break;
-		}
-
-		foreach($result['Search'] as $series) {
-			array_push($outcome->results, $series);
-		}
-
-		$totalResults = $result['totalResults'];
-		$alreadyRetrieved = ($effectivePage - 1) * 10 + sizeof($outcome->results);
-		$outcome->more = $alreadyRetrieved < $totalResults;
-	}
-
-	return $outcome;
-}
-
 if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 	$imdbId = $_POST['imdb_id'];
 
@@ -112,7 +36,7 @@ if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 		echo '<p>Already tracking ' . $trackedName . '.</p>';
 	} else {
 		$config = getConfig();
-		$name = fetchShowName($config, $imdbId);
+		$name = $config->getImdbApiClient()->fetchShowName($imdbId);
 
 		if ($name && trackShow($config->getDb(), $imdbId, $name)) {
 			echo '<p>Now tracking ' . $name . '.</p>';
@@ -128,7 +52,7 @@ if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 		$page = $_GET['page'];
 	}
 
-	$searchOutcome = fetchSearchResults($config, $query, $page);
+	$searchOutcome = $config->getOmdbApiClient()->fetchSearchResults($query, $page);
 	if ($searchOutcome) {
 		echo <<<THEADER
 		<table>
@@ -169,8 +93,8 @@ RESULT;
 
 TFOOTER;
 
-		if ($searchOutcome->more) {
-			$nextPage = $page + 1;
+		if ($searchOutcome->nextPage) {
+			$nextPage = $searchOutcome->nextPage;
 			echo <<<NEXTPAGE
 		<form method="get">
 			<input type="hidden" name="query" value="$query">
