@@ -58,6 +58,52 @@ function fetchShowName($config, $imdbId) {
 	}
 }
 
+function fetchSearchResults($config, $query, $page) {
+	if (!$config->supportsSearch()) throw new Exception('Search requires an OMDB api key in config');
+
+	$outcome = new \stdClass();
+	$outcome->results = [];
+	$outcome->more = true;
+
+	# Each page from OMDB is 10 results, which is rather small, so let's get two pages at a time and paginate internally
+	$effectivePage = ($page - 1) * 2;
+	for ($i = 1; $i < 3 && $outcome->more; $i++) {
+		try {
+			$curl = curl_init();
+
+			$queryPage = $effectivePage + $i;
+			curl_setopt($curl, CURLOPT_URL, 'https://www.omdbapi.com/?apikey=' . $config->getOmdbApiKey() . '&type=series&s=' . $query . '&page=' . $queryPage);
+			curl_setopt($curl, CURLOPT_HEADER, 0);
+			curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+			$result = curl_exec($curl);
+			if (!$result) {
+				$info = curl_getinfo($curl);
+				error_log('Failed to search ' . $query . ' on page ' . $effectivePage . ', code: ' . $info['http_code'] . ', in: ' . $info['total_time']);
+				return false;
+			}
+		} finally {
+			curl_close($curl);
+		}
+
+		$result = json_decode($result, true);
+		if ($result['Response'] == 'False') {
+			# There are no more results, and possibly there are none at all
+			$outcome->more = false;
+			break;
+		}
+
+		foreach($result['Search'] as $series) {
+			array_push($outcome->results, $series);
+		}
+
+		$totalResults = $result['totalResults'];
+		$alreadyRetrieved = ($effectivePage - 1) * 10 + sizeof($outcome->results);
+		$outcome->more = $alreadyRetrieved < $totalResults;
+	}
+
+	return $outcome;
+}
+
 if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 	$imdbId = $_POST['imdb_id'];
 
@@ -75,12 +121,84 @@ if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 			echo '<p>Failed to track show.</p>';
 		}
 	}
+} else if (isset($_GET['query']) && $config->supportsSearch()) {
+	$query = $_GET['query'];
+	$page = 1;
+	if (isset($_GET['page'])) {
+		$page = $_GET['page'];
+	}
+
+	$searchOutcome = fetchSearchResults($config, $query, $page);
+	if ($searchOutcome) {
+		echo <<<THEADER
+		<table>
+			<tr>
+				<th></th>
+				<th>Title</th>
+				<th></th>
+			</tr>
+
+THEADER;
+
+		foreach ($searchOutcome->results as $result) {
+			$poster = null;
+			if ($result['Poster'] != 'N/A') {
+				$poster = '<img src="' . $result['Poster'] . '" style="width:100px">';
+			}
+			$name = $result['Title'];
+			$year = $result['Year'];
+			$imdbId = $result['imdbID'];
+
+			echo <<<RESULT
+			<tr>
+				<td>$poster</td>
+				<td>$name ($year)</td>
+				<td>
+					<form method="post">
+						<input type="hidden" name="imdb_id" value="$imdbId">
+						<input type="submit" value="Track">
+					</form>
+				</td>
+			</tr>
+
+RESULT;
+		}
+
+		echo <<<TFOOTER
+		</table>
+
+TFOOTER;
+
+		if ($searchOutcome->more) {
+			$nextPage = $page + 1;
+			echo <<<NEXTPAGE
+		<form method="get">
+			<input type="hidden" name="query" value="$query">
+			<input type="hidden" name="page" value="$nextPage">
+			<input type="Submit" value="More Results">
+		</form>
+
+NEXTPAGE;
+		}
+	}
 }
 ?>
 		<form method='post'>
 			<label for='imdb_id'>IMDB ID</label>
-			<input type='text' name='imdb_id'><br>
-			<input type='submit'>
+			<input type='text' name='imdb_id'>
+			<input type='submit' value='Track'>
 		</form>
+<?php
+if ($config->supportsSearch()) {
+	echo <<<SEARCH
+		<form method='get'>
+			<label for='query'>Search Term</label>
+			<input type='text' name='query'>
+			<input type='submit' value='Search'>
+		</form>
+
+SEARCH;
+}
+?>
 	</body>
 </html> 

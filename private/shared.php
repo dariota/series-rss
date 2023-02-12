@@ -3,12 +3,17 @@
 class Config {
 	# Despite the name this isn't the official one, it's just a very similar sounding scammy looking site
 	private string $imdbApiKey;
+	# This one has more permissive rate limits, which is better suited for search, but lower quality results
+	private string $omdbApiKey;
 	private string $dbLocation;
 	private SQLite3 $db;
 
 	public function __construct($rawConfig) {
 		$this->imdbApiKey = $rawConfig['imdb_api_key'];
 		$this->dbLocation = $rawConfig['db_location'];
+		if (isset($rawConfig['omdb_api_key'])) {
+			$this->omdbApiKey = $rawConfig['omdb_api_key'];
+		}
 	}
 
 	public function getImdbApiKey() {
@@ -21,6 +26,16 @@ class Config {
 		}
 
 		return $this->db;
+	}
+
+	public function supportsSearch() {
+		return isset($this->omdbApiKey);
+	}
+
+	public function getOmdbApiKey() {
+		if (!$this->supportsSearch()) throw new Exception("No OMDB Api Key configured");
+
+		return $this->omdbApiKey;
 	}
 }
 
