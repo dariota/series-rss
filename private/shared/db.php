@@ -71,9 +71,9 @@ SQL
 	}
 
 	public function updateShow($imdbId, $seasons) {
-		if (sizeof($seasons) > 0) {
-			$this->db->exec('BEGIN TRANSACTION');
+		$this->db->exec('BEGIN TRANSACTION');
 
+		if (sizeof($seasons) > 0) {
 			$stmt = $this->db->prepare('INSERT INTO seasons (imdb_id, number, released) VALUES (:imdb_id, :number, :release)');
 			foreach ($seasons as $season) {
 				$stmt->reset();
@@ -84,14 +84,30 @@ SQL
 				$stmt->execute();
 			}
 			$stmt->close();
-
-			$showStmt = $this->db->prepare('UPDATE shows SET last_checked = strftime(\'%s\', datetime(\'now\')) WHERE imdb_id = :imdb_id');
-			$showStmt->bindValue(':imdb_id', $imdbId);
-			$showStmt->execute();
-			$showStmt->close();
-
-			$this->db->exec('COMMIT');
 		}
+
+		$showStmt = $this->db->prepare('UPDATE shows SET last_checked = strftime(\'%s\', datetime(\'now\')) WHERE imdb_id = :imdb_id');
+		$showStmt->bindValue(':imdb_id', $imdbId);
+		$showStmt->execute();
+		$showStmt->close();
+
+		$this->db->exec('COMMIT');
+	}
+
+	public function getShowMaxSeason($imdbId) {
+		$stmt = $this->db->prepare(<<<SQL
+SELECT
+		IFNULL(MAX(number), 0)
+	FROM seasons
+	WHERE
+		imdb_id = :imdb_id
+SQL
+		);
+		$stmt->bindValue(':imdb_id', $imdbId);
+		$result = $stmt->execute();
+		if (!$result) return 0;
+
+		return $result->fetchArray(SQLITE3_NUM)[0];
 	}
 
 	private function staleShowQuery($limit = false) {
