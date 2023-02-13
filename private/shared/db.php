@@ -13,7 +13,8 @@ class Database {
 CREATE TABLE IF NOT EXISTS shows (
 	imdb_id TEXT PRIMARY KEY,
 	name TEXT NOT NULL,
-	last_checked INTEGER NOT NULL DEFAULT 0
+	last_checked INTEGER NOT NULL DEFAULT 0,
+	cancelled INTEGER NOT NULL DEFAULT 0
 )
 SQL
 		);
@@ -35,6 +36,34 @@ SQL
 		$success &= $this->db->exec(<<<SQL
 CREATE UNIQUE INDEX IF NOT EXISTS season_numbers
 	ON seasons (imdb_id, number)
+SQL
+		);
+
+		$success &= $this->db->exec(<<<SQL
+CREATE TABLE IF NOT EXISTS suggestions (
+	base_show_imdb_id TEXT NOT NULL,
+	suggestion_imdb_id TEXT NOT NULL
+)
+SQL
+		);
+
+		$success &= $this->db->exec(<<<SQL
+CREATE UNIQUE INDEX IF NOT EXISTS suggestion_join
+	ON suggestions (base_show_imdb_id, suggestion_imdb_id)
+SQL
+		);
+
+		$success &= $this->db->exec(<<<SQL
+CREATE TABLE IF NOT EXISTS suggestion_names (
+	imdb_id TEXT NOT NULL,
+	name TEXT NOT NULL
+)
+SQL
+		);
+
+		$success &= $this->db->exec(<<<SQL
+CREATE UNIQUE INDEX IF NOT EXISTS suggestion_names_index
+	ON suggestion_names (imdb_id)
 SQL
 		);
 
@@ -73,7 +102,8 @@ SELECT
 	FROM shows
 		LEFT JOIN seasons USING(imdb_id)
 	WHERE
-		shows.last_checked < strftime('%s', 'now', '-1 day')
+		shows.last_checked < strftime('%s', 'now', '-1 day') AND
+		NOT shows.cancelled
 	GROUP BY shows.imdb_id
 SQL;
 
@@ -116,6 +146,15 @@ SQL;
 		return $stmt->execute();
 	}
 
+	public function setCancelled($imdbId, $isCancelled) {
+		$cancelled = $isCancelled ? 1 : 0;
+		$stmt = $this->db->prepare('UPDATE shows SET cancelled = :cancelled WHERE imdb_id = :imdb_id');
+		$stmt->bindValue(':cancelled', $cancelled);
+		$stmt->bindValue(':imdb_id', $imdbId);
+
+		return $stmt->execute();
+	}
+
 	public function getSeasonsByLastReleased() {
 		return $this->db->query(<<<SQL
 SELECT
@@ -143,6 +182,7 @@ SELECT
 	shows.imdb_id,
 	shows.name,
 	shows.last_checked,
+	shows.cancelled,
 	season_releases.released
 	FROM shows
 		LEFT JOIN season_releases USING(imdb_id)
