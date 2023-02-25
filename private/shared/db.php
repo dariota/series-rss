@@ -208,6 +208,27 @@ SQL
 		);
 	}
 
+	public function getSuggestionsByCount() {
+		return $this->db->query(<<<SQL
+SELECT
+	suggestions.suggestion_imdb_id AS imdb_id,
+	suggestion_names.name AS name,
+	COUNT(1) AS times_suggested
+  FROM suggestions
+  JOIN suggestion_names
+    ON suggestions.suggestion_imdb_id = suggestion_names.imdb_id
+  LEFT JOIN shows
+    ON suggestions.suggestion_imdb_id = shows.imdb_id
+  WHERE shows.imdb_id IS NULL
+  GROUP BY
+    suggestions.suggestion_imdb_id,
+	suggestion_names.name
+  ORDER BY times_suggested DESC
+  LIMIT 100
+SQL
+		);
+	}
+
 	public function getShowsByLastReleased() {
 		return $this->db->query(<<<SQL
 WITH season_releases AS (
