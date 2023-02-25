@@ -41,6 +41,13 @@ class ImdbApiClient extends HttpClient {
 		# some episodes have no dates, so we search them all for a date
 		$released = [];
 		foreach ($result['episodes'] as $episode) {
+			# IMDB gives us just a year for episodes it doesn't have a release date for, so we ignore thoseo
+			# We determine whether the release date is just a year by checking if there are any spaces
+			# in the string. If there are, it's a full date, otherwise it's just a year.
+			if (strpos($episode['released'], ' ') === false) {
+				continue;
+			}
+
 			$releasedAt = strtotime($episode['released']);
 			if ($releasedAt) {
 				array_push($released, $releasedAt);
