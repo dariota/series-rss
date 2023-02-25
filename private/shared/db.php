@@ -70,6 +70,14 @@ SQL
 		return $success;
 	}
 
+	public function beginTransaction() {
+		$this->db->exec('BEGIN TRANSACTION');
+	}
+
+	public function commitTransaction() {
+		$this->db->exec('COMMIT');
+	}
+
 	public function updateShow($imdbId, $seasons) {
 		$this->db->exec('BEGIN TRANSACTION');
 
@@ -92,6 +100,21 @@ SQL
 		$showStmt->close();
 
 		$this->db->exec('COMMIT');
+	}
+
+	public function markSimilar($baseShowImdbId, $similarShowImdbId, $similarShowName) {
+		// Assumes we're in a transaction
+		$stmt = $this->db->prepare('INSERT INTO suggestions (base_show_imdb_id, suggestion_imdb_id) VALUES (:base_show_imdb_id, :suggestion_imdb_id)');
+		$stmt->bindValue(':base_show_imdb_id', $baseShowImdbId);
+		$stmt->bindValue(':suggestion_imdb_id', $similarShowImdbId);
+		$stmt->execute();
+		$stmt->close();
+
+		$stmt = $this->db->prepare('INSERT OR IGNORE INTO suggestion_names (imdb_id, name) VALUES (:imdb_id, :name)');
+		$stmt->bindValue(':imdb_id', $similarShowImdbId);
+		$stmt->bindValue(':name', $similarShowName);
+		$stmt->execute();
+		$stmt->close();
 	}
 
 	public function getShowMaxSeason($imdbId) {

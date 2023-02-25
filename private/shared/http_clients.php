@@ -54,6 +54,24 @@ class ImdbApiClient extends HttpClient {
 		return min($released);
 	}
 
+	public function fetchSimilarShows($imdbId) {
+		if (!isValidImdbId($imdbId)) throw new Exception("Invalid IMDB ID provided");
+
+		$url = 'https://imdb-api.com/en/API/Title/' . $this->apiKey . '/' . $imdbId;
+		$result = json_decode($this->curlGet($url), true);
+
+		$similarShows = [];
+		foreach ($result['similars'] as $similarShow) {
+			# Create a standard object, put the id and name in it, and add it to the array
+			$similarShowObj = new stdClass();
+			$similarShowObj->imdbId = $similarShow['id'];
+			$similarShowObj->showName = $similarShow['title'];
+			array_push($similarShows, $similarShowObj);
+		}
+
+		return $similarShows;
+	}
+
 	# Returns a show title or false if no such show exists
 	public function fetchShowName($imdbId) {
 		if (!isValidImdbId($imdbId)) throw new Exception("Invalid IMDB ID provided");

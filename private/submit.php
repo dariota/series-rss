@@ -9,6 +9,42 @@ require_once 'shared/utils.php';
 $config = getConfig();
 $config->getDb()->ensure();
 
+function trackShow($config, $imdbId) {
+	$name = $config->getImdbApiClient()->fetchShowName($imdbId);
+
+	if (!$name) {
+		return false;
+	}
+
+	// Now we've confirmed it exists, we can fetch similar shows for recommendations
+	$similarShows = $config->getImdbApiClient()->fetchSimilarShows($imdbId);
+
+	// Start a transaction
+	$config->getDb()->beginTransaction();
+
+	// Save the similar shows and the one to be tracked
+	try {
+		$config->getDb()->trackShow($imdbId, $name);
+		foreach ($similarShows as $similarShow) {
+			$config->getDb()->markSimilar($imdbId, $similarShow->imdbId, $similarShow->showName);
+		}
+	} catch (Exception $e) {
+		// Rollback the transaction
+		$config->getDb()->exec('ROLLBACK');
+		return false;
+	}
+
+	$config->getDb()->commitTransaction();
+
+	try {
+		updateAllShows($config);
+	} catch (Exception $e) {
+		// Don't actually care, this can be updated some other time
+	}
+
+	return $name;
+}
+
 if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 	$imdbId = $_POST['imdb_id'];
 
@@ -17,11 +53,10 @@ if (isset($_POST['imdb_id']) && isValidImdbId($_POST['imdb_id'])) {
 		echo '<p>Already tracking ' . $trackedName . '.</p>';
 	} else {
 		$config = getConfig();
-		$name = $config->getImdbApiClient()->fetchShowName($imdbId);
+		$name = trackShow($config, $imdbId);
 
-		if ($name && $config->getDb()->trackShow($imdbId, $name)) {
+		if ($name) {
 			echo '<p>Now tracking ' . $name . '.</p>';
-			updateAllShows($config);
 		} else {
 			echo '<p>Failed to track show.</p>';
 		}
