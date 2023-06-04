@@ -195,6 +195,10 @@ SQL;
 	}
 
 	public function getSeasonsByLastReleased() {
+		$now = new DateTime();
+		$now->setTimezone(new DateTimeZone('Europe/Dublin'));
+		$nowTs = $now->getTimestamp();
+
 		return $this->db->query(<<<SQL
 SELECT
 		shows.name AS name,
@@ -203,6 +207,7 @@ SELECT
 		seasons.released AS released
 	FROM shows
 		JOIN seasons USING(imdb_id)
+    WHERE seasons.released < $nowTs
 	ORDER BY seasons.released DESC
 SQL
 		);
